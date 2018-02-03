@@ -1,4 +1,4 @@
-#! /bin/bash
+#!/bin/bash
 sudo apt-get install libuv1-dev
 git clone https://github.com/uWebSockets/uWebSockets 
 cd uWebSockets
