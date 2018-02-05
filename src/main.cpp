@@ -178,7 +178,6 @@ class FSM {
     map<string, vector<string>> next_states;
 
     int lane;
-//    int final_lane;
     int intended_lane;
 
     const double v_max = 49.5;
@@ -188,7 +187,7 @@ class FSM {
 public:
     FSM(string init_state, int init_lane);
 
-    vector<vector<double>> get_wp(vector<vector<double>> sensor_fusion, double car_s, double &v_target, int prev_size, const vector<double> &maps_s, const vector<double> &maps_x, const vector<double> &maps_y);
+    vector<vector<double>> get_wp(vector<vector<double>> sensor_fusion, double car_s, double car_speed, double end_d, double &v_target, int prev_size, const vector<double> &maps_s, const vector<double> &maps_x, const vector<double> &maps_y);
 
     void update_state(vector<vector<double>> sensor_fusion, double car_s, double car_d, int prev_size);
 };
@@ -267,13 +266,13 @@ vector<double> FSM::get_car(vector<vector<double>> sensor_fusion, double car_s, 
 
 }
 
-vector<vector<double>> FSM::get_wp(vector<vector<double>> sensor_fusion, double car_s, double &v_target, int prev_size, const vector<double> &maps_s, const vector<double> &maps_x, const vector<double> &maps_y) {
+vector<vector<double>> FSM::get_wp(vector<vector<double>> sensor_fusion, double car_s, double car_speed, double end_d, double &v_target, int prev_size, const vector<double> &maps_s, const vector<double> &maps_x, const vector<double> &maps_y) {
 
     vector<vector<double>> wps;
     int i;
 
-    double d1 = 25;
-    double d2 = 50;
+    double d1 = 30;
+    double d2 = 45;
 
     if (state == "kl") {
         for (i = 0; i < 3; ++i) {
@@ -288,39 +287,13 @@ vector<vector<double>> FSM::get_wp(vector<vector<double>> sensor_fusion, double 
         if (front_car.size() > 0){
             double dist = front_car[7];
             double speed = front_car[8];
-            if (dist < d1) v_target = 2.24 * speed * 0.75;
+            if (dist < d1) v_target = 2.24 * speed * 0.5;
             else if (dist < d2) v_target = 2.24 * speed;
         } 
 
-    } else if (state == "plcl" || state == "plcr") {        
-        v_target = v_max;
-
-        vector<double> front_car = get_car(sensor_fusion, car_s, lane, true, prev_size);
-
-        if (front_car.size() > 0){
-            double dist = front_car[7];
-            double speed = front_car[8];
-            if (dist < d1) v_target = 2.24 * speed * 0.75;
-            else if (dist < d2) v_target = 2.24 * speed;
-        }
-
-        vector<double> front_side_car = get_car(sensor_fusion, car_s, intended_lane, true, prev_size);
-
-        if (front_side_car.size() > 0) {
-            double dist = front_side_car[7];
-            double speed = front_side_car[8];
-            if (dist < d1) v_target = min(v_target, 2.24 * speed * 0.75);
-            else if (dist < d2) v_target = min(v_target, 2.24 * speed);
-        }
-
+    } else if (state == "plcl" || state == "plcr") {
         for (i = 0; i < 3; ++i) {
-            vector<double> wp = getXY(car_s + 30 * 3 * v_target / v_max * (i + 1), 2 + 4 * lane, maps_s, maps_x, maps_y);
-            wps.push_back(wp);
-        }
-
-    } else if (state == "lcl" || state == "lcr") {
-        for (i = 0; i < 3; ++i) {
-            vector<double> wp = getXY(car_s + 30 * (i + 1), 2 + 4 * intended_lane, maps_s, maps_x, maps_y);
+            vector<double> wp = getXY(car_s + 30 * (i + 1), 2 + 4 * lane, maps_s, maps_x, maps_y);
             wps.push_back(wp);
         }
         
@@ -331,7 +304,28 @@ vector<vector<double>> FSM::get_wp(vector<vector<double>> sensor_fusion, double 
         if (front_car.size() > 0){
             double dist = front_car[7];
             double speed = front_car[8];
-            if (dist < d1) v_target = 2.24 * speed * 0.75;
+            if (dist < d1) v_target = 2.24 * speed * 0.5;
+            else if (dist < d2) v_target = 2.24 * speed;
+        }
+
+        vector<double> front_side_car = get_car(sensor_fusion, car_s, intended_lane, true, prev_size);
+
+        if (front_side_car.size() > 0) {
+            double dist = front_side_car[7];
+            double speed = front_side_car[8];
+            if (dist < d1) v_target = min(v_target, 2.24 * speed * 0.5);
+            else if (dist < d2) v_target = min(v_target, 2.24 * speed);
+        }
+
+    } else if (state == "lcl" || state == "lcr") {
+        v_target = v_max * 0.95;
+
+        vector<double> front_car = get_car(sensor_fusion, car_s, lane, true, prev_size);
+
+        if (front_car.size() > 0){
+            double dist = front_car[7];
+            double speed = front_car[8];
+            if (dist < d1) v_target = 2.24 * speed * 0.5;
             else if (dist < d2) v_target = 2.24 * speed;
         }
 
@@ -341,11 +335,22 @@ vector<vector<double>> FSM::get_wp(vector<vector<double>> sensor_fusion, double 
             if (front_side_car.size() > 0) {
                 double dist = front_side_car[7];
                 double speed = front_side_car[8];
-                if (dist < d1) v_target = min(v_target, 2.24 * speed * 0.75);
+                if (dist < d1) v_target = min(v_target, 2.24 * speed * 0.5);
                 else if (dist < d2) v_target = min(v_target, 2.24 * speed);
             }
         }
 
+        for (i = 0; i < 3; ++i) {
+            double new_s;
+            double m = 0.75 * v_max / car_speed + 0.25;
+            if (state == "lcr") {
+                new_s = min((double)(2 + 4 * intended_lane), end_d + m * (i + 1));
+            } else {
+                new_s = max((double)(2 + 4 * intended_lane), end_d - m * (i + 1));
+            }
+            vector<double> wp = getXY(car_s + (20 + 20 * car_speed / v_max) * (i + 1), new_s, maps_s, maps_x, maps_y);
+            wps.push_back(wp);
+        }
     } 
 
     return wps;
@@ -360,7 +365,7 @@ void FSM::update_state(vector<vector<double>> sensor_fusion, double car_s, doubl
     double cost = DBL_MAX;
 
     double ds1 = 70;
-    double ds2 = 50;
+    double ds2 = 40;
 
     for (int i = 0; i < possible_states.size(); ++i) {
         double state_cost = DBL_MAX;
@@ -445,7 +450,7 @@ void FSM::update_state(vector<vector<double>> sensor_fusion, double car_s, doubl
 
             vector<double> rear_side_car = get_car(sensor_fusion, car_s, intended_lane, false, prev_size);
 
-            state_cost = 0.2;
+            state_cost = 0.1;
 
             if (front_side_car.size() > 0) {
                 double dist = front_side_car[7];
@@ -534,11 +539,11 @@ int main() {
   int lane = 1;
 
   double v_ref = 0;
-  const double v_max = 49.5;
-
+  double dv_prev = 0;
+  
   FSM fsm ("kl", lane);
 
-  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy, &lane, &v_ref, &v_max, &fsm](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy, &v_ref, &dv_prev, &fsm](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -617,7 +622,7 @@ int main() {
 
             fsm.update_state(sensor_fusion, car_s, car_d, prev_size);
 
-            vector<vector<double>> wps = fsm.get_wp(sensor_fusion, car_s, v_target, prev_size, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+            vector<vector<double>> wps = fsm.get_wp(sensor_fusion, car_s, car_speed, end_path_d, v_target, prev_size, map_waypoints_s, map_waypoints_x, map_waypoints_y);
 
 			for (i = 0; i < 3; i++) {
 				vector<double> wp = wps[i];
@@ -654,19 +659,24 @@ int main() {
 			double target_y = s(target_x);
 			double target_dist = sqrt(target_x * target_x + target_y * target_y);
 
-            double dv_max = 0.4; //mph
-            double dv_min = 0.05;
+            double dv_max = 0.35; //mph
             double v_err = 0.5;
-			
+            double max_jerk = 0.4;
+            
             double x_add = 0.0;
 
    			for(i = 0; i < 50 - prev_size; i++) {
-                double dv = min(dv_max, (v_target - v_ref)/5);
-                dv = max(dv, dv_min);
+                double dv = min(dv_max, abs(v_target - v_ref)/5);
                 if (v_ref < v_target - v_err) {
+                    dv = min(dv, max_jerk + dv_prev);
                     v_ref += dv;
+                    dv_prev = dv;
                 } else if (v_ref > v_target) {
+                    dv = abs(max(- dv, - max_jerk + dv_prev));
                     v_ref -= dv;
+                    dv_prev = -dv;
+                } else {
+                    dv_prev = 0;
                 }
                 //cout << "Target: " << v_target << ", ref: " << v_ref << endl;
 			    double N = target_dist / (0.02 * v_ref / 2.24);
