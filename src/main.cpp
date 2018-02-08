@@ -196,6 +196,7 @@ public:
  *      FSM implementation
  */
 
+// constructor
 FSM::FSM(string init_state, int init_lane) {
     states = {"kl", "plcl", "plcr", "lcl" "lcr"};
 
@@ -216,7 +217,7 @@ FSM::FSM(string init_state, int init_lane) {
     lane = init_lane;
 }
 
-
+// Get the closest car from any lane either from the front or back of the (ego) car. Also include its speed and the distance from the ego car.
 vector<double> FSM::get_car(vector<vector<double>> sensor_fusion, double car_s, int from_lane, bool from_front, int prev_size) {
 
     int car_i = -1; 
@@ -266,6 +267,7 @@ vector<double> FSM::get_car(vector<vector<double>> sensor_fusion, double car_s, 
 
 }
 
+// Get waypoints for the spline function. This depends on the current state. Also sets the target velocity for the car.
 vector<vector<double>> FSM::get_wp(vector<vector<double>> sensor_fusion, double car_s, double car_speed, double end_d, double &v_target, int prev_size, const vector<double> &maps_s, const vector<double> &maps_x, const vector<double> &maps_y) {
 
     vector<vector<double>> wps;
@@ -356,6 +358,7 @@ vector<vector<double>> FSM::get_wp(vector<vector<double>> sensor_fusion, double 
     return wps;
 }
 
+// Update the state of the car. This changes the car's behaviour.
 void FSM::update_state(vector<vector<double>> sensor_fusion, double car_s, double car_d, int prev_size) {
     vector<string> possible_states = next_states[state];
 
@@ -479,10 +482,10 @@ void FSM::update_state(vector<vector<double>> sensor_fusion, double car_s, doubl
         }
     }
 
-    string old_state = state;
+    //string old_state = state;
     state = possible_states[optimal_i];
 
-    if (old_state != state) cout << "Changed to state: " << state << endl;
+    //if (old_state != state) cout << "Changed to state: " << state << endl;
 
     if (state == "plcl") {
         intended_lane = lane - 1;
@@ -536,12 +539,10 @@ int main() {
   	map_waypoints_dy.push_back(d_y);
   }
 
-  int lane = 1;
-
   double v_ref = 0;
   double dv_prev = 0;
   
-  FSM fsm ("kl", lane);
+  FSM fsm ("kl", 1);
 
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy, &v_ref, &dv_prev, &fsm](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
@@ -583,6 +584,7 @@ int main() {
 
 			int prev_size = min(previous_path_x.size(), previous_path_y.size());
 
+            // define target velocity
           	double v_target;
 
 			json msgJson;
@@ -620,11 +622,12 @@ int main() {
 			
 			int i;
 
+            // first update state, then get the waypoints
             fsm.update_state(sensor_fusion, car_s, car_d, prev_size);
 
             vector<vector<double>> wps = fsm.get_wp(sensor_fusion, car_s, car_speed, end_path_d, v_target, prev_size, map_waypoints_s, map_waypoints_x, map_waypoints_y);
 
-			for (i = 0; i < 3; i++) {
+			for (i = 0; i < wps.size(); i++) {
 				vector<double> wp = wps[i];
 
 				xs.push_back(wp[0]);
@@ -647,7 +650,7 @@ int main() {
           	vector<double> next_x_vals;
           	vector<double> next_y_vals;
 
-          	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
+          	// define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
 
 
 			for (i = 0; i < prev_size; ++i) {
@@ -659,13 +662,14 @@ int main() {
 			double target_y = s(target_x);
 			double target_dist = sqrt(target_x * target_x + target_y * target_y);
 
-            double dv_max = 0.35; //mph
-            double v_err = 0.5;
-            double max_jerk = 0.4;
+            double dv_max = 0.35; // max acceleration 
+            double v_err = 0.5; // buffer for target velocity
+            double max_jerk = 0.4; 
             
             double x_add = 0.0;
 
    			for(i = 0; i < 50 - prev_size; i++) {
+                // control current velocity based on target velocity and constraints (dv_max and max_jerk)
                 double dv = min(dv_max, abs(v_target - v_ref)/5);
                 if (v_ref < v_target - v_err) {
                     dv = min(dv, max_jerk + dv_prev);
@@ -678,7 +682,7 @@ int main() {
                 } else {
                     dv_prev = 0;
                 }
-                //cout << "Target: " << v_target << ", ref: " << v_ref << endl;
+
 			    double N = target_dist / (0.02 * v_ref / 2.24);
 
 				double x_point = x_add + target_x / N;
@@ -690,7 +694,7 @@ int main() {
 
 				x_point = xp * cos(ref_yaw) - yp * sin(ref_yaw) + ref_x;
 				y_point = xp * sin(ref_yaw) + yp * cos(ref_yaw) + ref_y;
-//				cout << "i: " << i + prev_size << ", x: " << x_point << ", y: " << y_point << endl;
+
 				next_x_vals.push_back(x_point);
 				next_y_vals.push_back(y_point);
     		}
